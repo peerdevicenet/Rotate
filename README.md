@@ -1,5 +1,5 @@
-PeerDeviceNet_RotateWithPeers
-=============================
+RotateWithPeers
+===============
 
 This sample is a slight change of standard android example TouchRotateActivity. 
 The original TouchRotateActivity allows you rotate a 3D cube thru touch screen. 
@@ -10,7 +10,7 @@ The changes are as following.
 
 1. configuration changes
 
-	1.1. install PeerDeviceNet (free edition)
+	1.1. build this app using Router project as library
 
 	1.2. in AndroidManifest.xml, add the following permission to enable group communication:
 		
@@ -30,12 +30,12 @@ The changes are as following.
 
 	2.1. connect to peer devices
 
-	We could call connection service api to set up peer connections. Normally we'll go 
-		the simpler route: reuse PeerDeviceNet's connection manager.
-		So add a button in GUI to bring up connection manager. In button's callback, 
+	We could directly call connection service api to set up peer connections. Or we can
+		reuse one of the sample connectors to search and connect to peer devices.
+		So add a button in GUI to bring up a connector. In button's callback, 
 		add following code:
 
-		Intent intent = new Intent("com.xconns.peerdevicenet.CONNECTION_MANAGEMENT");
+		Intent intent = new Intent("com.xconns.peerdevicenet.CONNECTOR");
 		startActivity(intent);
 		
 	2.2. bind to PeerDeviceNet group service
