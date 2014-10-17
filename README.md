@@ -10,21 +10,15 @@ The changes are as following.
 
 1. configuration changes
 
-	1.1. build this app using Router project as library
-
-	1.2. in AndroidManifest.xml, add the following permission to enable group communication:
+	1.1. in AndroidManifest.xml, add the following permission to enable group communication:
 		
 		<uses-permission android:name="com.xconns.peerdevicenet.permission.REMOTE_MESSAGING" />
 
-	1.3. this sample will use AIDL interface to connect to group service and communicate 
-		with peers; so add the following aidl files under package com.xconns.peerdevicenet:
+	1.2. To access Router's api, add peerdevicenet-api.jar in one of two ways:
+             
+             * download peerdevicenet-api.jar from MavenCentral(http://search.maven.org/#search|ga|1|peerdevicenet) and copy to project's "libs/" directory.
+             * if you are using android's new gradle build system, you can import it as 'com.xconns.peerdevicenet:peerdevicenet-api:1.1.4'.
 
-		* DeviceInfo.java - a simple class containing info about device: name, address, port
-		* DeviceInfo.aidl
- 		* IRouterGroupService.aidl - async calls to join/leave group and send messages
- 		* IRouterGroupHandler.aidl - callback interface to receive messages and group events 
- 									such as peer join/leave.
- 		* Router.java - optionally included for convenience, define commonly used message ids.
  		
 2. code changes
 
@@ -41,28 +35,23 @@ The changes are as following.
 	2.2. bind to PeerDeviceNet group service
 
 	The group service is named as: "com.xconns.peerdevicenet.GroupService".
+	    To simplify coding, here we use the wrapper class of GroupService: RouterGroupClient.
 		As normal, we bind/unbind to aidl group service during life-cycle callback methods:
 
 		onCreate():
-			Intent intent = new Intent("com.xconns.peerdevicenet.GroupService");
-			bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+            mGroupClient = new RouterGroupClient(this, groupId/*"RotateWithPeers"*/, null, mGroupHandler);
+            mGroupClient.bindService();
 		onDestroy():
-		   	unbindService(mConnection);
+		   	mGroupClient.unbindService();
 		
 	2.3. join/leave group
 
 	All devices participating in rotating cube will join a group named "RotateWithPeers".
 
 	We'll join group when binding to group service is complete, and register group handler
-		   to handle events:
+		   to handle events, leave group when app is destroyed, these are all handled automatically
+		   at above mGroupClient.bindService(), mGroupClient.unbindService().
 
-		onServiceConnected():
-		   	mGroupService.joinGroup(groupId, null, mGroupHandler);
-	leave group when app is destroyed
-
-		onDestroy():
-		   	mGroupService.leaveGroup(groupId, mGroupHandler);
-		   	
 	2.4. application message
 
 	We use RotateMsg class to send rotation information, with 
@@ -88,19 +77,19 @@ The changes are as following.
 	When sending initial orientation requests and orientation change events, we 
 			broadcast messages to all peers in group:
 
-		mGroupService.send(groupId, null, msg.marshall());
+		mGroupClient.send(null, msg.marshall());
 
 	When replying to peer's initial orientation request, we send point-to-point
 			message to just send to the requesting peer:
 
-		mGroupService.send(groupId, requesting_peer, msg.marshall());
+		mGroupClient.send(requesting_peer, msg.marshall());
 	
 	2.6. receive messages
 
 	To receive messages and other group communication events, define a handler
-			object implementing IRouterGroupHandler aidl interface:
+			object implementing RouterGroupClient.GroupHandler interface:
 
-			mGroupHandler = new IRouterGroupHandler() {
+			mGroupHandler = new RouterGroupClient.GroupHandler() {
 				onSelfJoin(DeviceInfo[] devices):
 					here we find out if there are existing peers in the group, 
 					if so, send message requesting their orientation to sync initial orientation.

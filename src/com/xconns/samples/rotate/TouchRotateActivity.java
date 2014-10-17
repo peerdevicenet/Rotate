@@ -16,25 +16,13 @@
 
 package com.xconns.samples.rotate;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
-
-import javax.microedition.khronos.egl.EGLConfig;
-import javax.microedition.khronos.opengles.GL10;
-
 import android.app.Activity;
-import android.content.ComponentName;
-import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Message;
 import android.os.Parcel;
-import android.os.RemoteException;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -43,9 +31,15 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 
 import com.xconns.peerdevicenet.DeviceInfo;
-import com.xconns.peerdevicenet.IRouterGroupHandler;
-import com.xconns.peerdevicenet.IRouterGroupService;
 import com.xconns.peerdevicenet.Router;
+import com.xconns.peerdevicenet.RouterGroupClient;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
 
 
 // a simple msg for rotation info. 
@@ -68,7 +62,7 @@ class RotateMsg {
 	//the following using android Parcel to marshaling data, could use JSON etc.
 	public byte[] marshall() {
 		final Parcel parcel = Parcel.obtain();
-		byte[] data = null;
+		byte[] data;
 		parcel.writeInt(msgId);
 		parcel.writeFloat(rx);
 		parcel.writeFloat(ry);
@@ -81,7 +75,6 @@ class RotateMsg {
 		final Parcel parcel = Parcel.obtain();
 		parcel.unmarshall(data, 0, len);
 		parcel.setDataPosition(0);
-		RotateMsg m = new RotateMsg();
 		msgId = parcel.readInt();
 		rx = parcel.readFloat();
 		ry = parcel.readFloat();
@@ -101,9 +94,7 @@ public class TouchRotateActivity extends Activity {
 	private static final String TAG = "TouchRotateActivity";
 
 	private static final String groupId = "RotateWithPeers";
-	private IRouterGroupService mGroupService = null;
-	int numPeer = 0;
-	
+    private RouterGroupClient mGroupClient = null;
 
 	// opengl canvas
 	private TouchSurfaceView mGLSurfaceView;
@@ -132,9 +123,8 @@ public class TouchRotateActivity extends Activity {
 			}
 		});
 
-		//bind to group service
-		Intent intent = new Intent("com.xconns.peerdevicenet.GroupService");
-		bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        mGroupClient = new RouterGroupClient(this, groupId, null, mGroupHandler);
+        mGroupClient.bindService();
 	}
 
 	@Override
@@ -155,47 +145,13 @@ public class TouchRotateActivity extends Activity {
 
 	@Override
 	public void onDestroy() {
-		if (mGroupService != null) {
-			try {
-				// leave group
-				mGroupService.leaveGroup(groupId, mGroupHandler);
-			} catch (RemoteException e) {
-				// Log.e(TAG, "failed at leaveGroup: " + e.getMessage());
-			}
-			// unbind service
-			unbindService(mConnection);
-		}
+        mGroupClient.unbindService();
 		super.onDestroy();
 	}
 	
-	private ServiceConnection mConnection = new ServiceConnection() {
-		public void onServiceConnected(ComponentName className, IBinder service) {
-			mGroupService = IRouterGroupService.Stub.asInterface(service);
-			Log.d(TAG, "GroupService connected");
-			// join group
-			try {
-				mGroupService.joinGroup(groupId, null, mGroupHandler);
-			} catch (RemoteException e) {
-				Log.e(TAG, "failed at joinGroup: " + e.getMessage());
-			}
-			Log.d(TAG, "joined group: " + groupId);
-		}
-
-		public void onServiceDisconnected(ComponentName className) {
-			mGroupService = null;
-		}
-	};
-
 	//send rotate info to peers
 	public void sendRotateMsgToPeers(RotateMsg m) {
-		if (mGroupService != null) {
-			try {
-				mGroupService.send(groupId, null, m.marshall());
-			} 
-			catch (RemoteException re) {
-				Log.d(TAG, "fail to send rotate info");
-			}
-		}
+        mGroupClient.send(null, m.marshall());
 	}
 	
 	//process rotate info from peers
@@ -203,50 +159,44 @@ public class TouchRotateActivity extends Activity {
 		//process init orientation req
 		if (m.msgId == RotateMsg.INIT_ORIENT_REQ) {
 			RotateMsg m1 = mGLSurfaceView.getCurrentOrientation();
-			try {
-				mGroupService.send(groupId, dev, m1.marshall());
-			}
-			catch(RemoteException re) {
-				Log.d(TAG, "fail to send initial orientation");
-			}
-			return;
+			mGroupClient.send(dev, m1.marshall());
+            return;
 		}
 		//handle init orientation resp and delta rotation
 		mGLSurfaceView.procRotateMsgFromPeer(m);
 	}
 
-	private IRouterGroupHandler mGroupHandler = new IRouterGroupHandler.Stub() {
+	private RouterGroupClient.GroupHandler mGroupHandler = new RouterGroupClient.GroupHandler() {
 
-		public void onError(String errInfo) throws RemoteException {
+		public void onError(String errInfo) {
 			Log.d(TAG, "group comm error : " + errInfo);
 		}
 
-		public void onSelfJoin(DeviceInfo[] devices) throws RemoteException {
+		public void onSelfJoin(DeviceInfo[] devices) {
 			if (devices != null && devices.length > 0) {
 				//i have peers, sync my inital orientation with them
 				RotateMsg m = new RotateMsg(RotateMsg.INIT_ORIENT_REQ, 0, 0); //req init orientation
-				mGroupService.send(groupId, null, m.marshall());
+				mGroupClient.send(null, m.marshall());
 			}
 		}
 
-		public void onPeerJoin(DeviceInfo device) throws RemoteException {
+		public void onPeerJoin(DeviceInfo device) {
 		}
 
-		public void onSelfLeave() throws RemoteException {
+		public void onSelfLeave() {
 		}
 
-		public void onPeerLeave(DeviceInfo device) throws RemoteException {
+		public void onPeerLeave(DeviceInfo device) {
 		}
 
-		public void onReceive(DeviceInfo src, byte[] b) throws RemoteException {
+		public void onReceive(DeviceInfo src, byte[] b) {
 			Log.d(TAG, "recv rotate info from "+src.toString());
 			Message msg = mHandler.obtainMessage(Router.MsgId.RECV_MSG);
 			msg.obj = new Object[]{src, b};
 			mHandler.sendMessage(msg);
 		}
 
-		public void onGetPeerDevices(DeviceInfo[] devices)
-				throws RemoteException {
+		public void onGetPeerDevices(DeviceInfo[] devices) {
 		}
 	};
 
