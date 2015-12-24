@@ -1,6 +1,8 @@
 RotateWithPeers
 ===============
 
+*** moved to github.com/xconns-com/PeerDeviceNet ***
+
 This sample is a slight change of standard android example TouchRotateActivity. 
 The original TouchRotateActivity allows you rotate a 3D cube thru touch screen. 
 This sample add PeerDeviceNet group communication to allow several android devices 
